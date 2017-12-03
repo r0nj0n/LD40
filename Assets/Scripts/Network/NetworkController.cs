@@ -1,9 +1,16 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class NetworkController : MonoBehaviour
 {
+  public event Action onGameBegin;
+
+  [SerializeField]
+  GameObject showThisOnDisconnectBeforeReloadingTheScene;
+
   [SerializeField]
   float zPositionPlayer1;
 
@@ -24,7 +31,7 @@ public class NetworkController : MonoBehaviour
     {
       MaxPlayers = 2
     };
-    PhotonNetwork.ConnectUsingSettings("0.1");
+    PhotonNetwork.ConnectUsingSettings("0.4");
   }
 
   protected void OnJoinedLobby()
@@ -32,50 +39,111 @@ public class NetworkController : MonoBehaviour
     PhotonNetwork.JoinRandomRoom(roomOptions.CustomRoomProperties, roomOptions.MaxPlayers);
   }
 
-  protected void OnPhotonRandomJoinFailed()
+  protected void OnPhotonRandomJoinFailed(object[] codeAndMsg)
   {
+    print($"{nameof(OnPhotonRandomJoinFailed)} code {codeAndMsg[0]} message {codeAndMsg[1]}");
+
     PhotonNetwork.CreateRoom(null, roomOptions, TypedLobby.Default);
+  }
+
+  void OnPhotonJoinRoomFailed()
+  {
+    Debug.LogError("Join failed");
+  }
+
+  protected void OnPhotonPlayerConnected(
+    PhotonPlayer newPlayer)
+  {
+    Debug.Assert(PhotonNetwork.room.PlayerCount == 2);
+
+    OnGameBegin();
   }
 
   protected void OnJoinedRoom()
   {
-    PhotonPlayer[] playerList = PhotonNetwork.playerList;
-    print($"Welcome!  There are a total of {playerList.Length} players in the room");
+    print($"Welcome!  There are a total of {PhotonNetwork.room.PlayerCount} players in the room");
 
+    if (PhotonNetwork.room.PlayerCount > 1)
+    {
+      OnGameBegin();
+    }
+  }
+
+  void OnGameBegin()
+  {
     Vector3 position = playerPrefab.transform.position;
-    if (playerList.Length == 1)
-    {
-      //PhotonNetwork.player.SetCustomProperties(
-      PhotonNetwork.SetPlayerCustomProperties(new ExitGames.Client.Photon.Hashtable()
-      {
-        {"PlayerId", 0}
-      });
-    }
-    else
-    {
-      int otherPlayerId = (int)playerList[0].CustomProperties["PlayerId"];
-      if (otherPlayerId == 0)
-      {
-        PhotonNetwork.player.CustomProperties.Add("PlayerId", 1);
-      }
-      else
-      {
-        PhotonNetwork.player.CustomProperties.Add("PlayerId", 0);
-      }
-    }
-
-    if ((int)PhotonNetwork.player.CustomProperties["PlayerId"] == 0)
-    {
-      position.z = zPositionPlayer1;
-    }
-    else
-    {
-      position.z = zPositionPlayer2;
-    }
+    position.z = zPositionPlayer1;
 
     GameObject ball = PhotonNetwork.Instantiate(playerPrefab.name, position, transform.rotation, 0);
     PhotonView view = ball.GetComponent<PhotonView>();
     view.RequestOwnership();
     Debug.Assert(view.isMine);
+
+    onGameBegin?.Invoke();
+  }
+
+  void OnLeftRoom()
+  {
+    print(nameof(OnLeftRoom));
+  }
+
+  void OnPhotonCreateRoomFailed(object[] codeAndMsg)
+  { // codeAndMsg[0] is short ErrorCode. codeAndMsg[1] is string debug msg. }
+    print(nameof(OnPhotonCreateRoomFailed) + " " + codeAndMsg[1]);
+  }
+
+  void OnPhotonJoinRoomFailed(object[] codeAndMsg)
+  { // codeAndMsg[0] is short ErrorCode. codeAndMsg[1] is string debug msg. }
+    print(nameof(OnPhotonJoinRoomFailed) + " " + codeAndMsg[1]);
+  }
+
+  void OnCreatedRoom()
+  {
+    print(nameof(OnCreatedRoom));
+  }
+
+  void OnLeftLobby()
+  {
+    print(nameof(OnLeftLobby));
+  }
+
+  void OnDisconnectedFromPhoton()
+  {
+    print(nameof(OnDisconnectedFromPhoton));
+  }
+
+  void OnConnectionFail(DisconnectCause cause)
+  {
+    print($"{nameof(OnConnectionFail)} cause: {cause}");
+  }
+
+  void OnFailedToConnectToPhoton(DisconnectCause cause)
+  {
+    print($"{nameof(OnFailedToConnectToPhoton)} cause: {cause}");
+  }
+
+  void OnPhotonPlayerDisconnected(PhotonPlayer otherPlayer)
+  {
+    print($"{nameof(OnPhotonPlayerDisconnected)}: {otherPlayer}");
+
+    StartCoroutine(ReloadScene());
+  }
+
+  IEnumerator ReloadScene()
+  {
+    print("Reloading scene...");
+    showThisOnDisconnectBeforeReloadingTheScene.SetActive(true);
+    yield return new WaitForSeconds(3);
+    SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+  }
+
+  void OnPhotonMaxCccuReached()
+  {
+    print(nameof(OnPhotonMaxCccuReached));
+  }
+
+  void OnCustomAuthenticationFailed(string debugMessage)
+  {
+    print(nameof(OnCustomAuthenticationFailed) + " " + debugMessage);
   }
 }
